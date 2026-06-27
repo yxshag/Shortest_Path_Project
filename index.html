@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>shortest distance calculator</title>
+    <!--load up the leaflet v1.9.4 and then basically set up the map-->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #map { width: 100%; height: 100%; background-color: #f0f0f0; }
+        
+        .control-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.2);
+            z-index: 1000;
+            width: 300px;
+        }
+        h2 { margin: 0 0 10px 0; font-size: 18px; color: #111; border-bottom: 2px solid #eee; padding-bottom: 8px; }
+        p { font-size: 13px; color: #666; margin: 4px 0 12px 0; }
+        label { font-size: 12px; font-weight: bold; color: #333; display: block; margin-bottom: 5px; }
+        select { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #ccc; font-size: 14px; margin-bottom: 15px; outline: none; }
+        
+        .scorecard {
+            background: #f9f9f9;
+            border-radius: 8px;
+            padding: 12px;
+            border: 1px solid #eef;
+        }
+        .score-title { font-size: 14px; font-weight: bold; color: #444; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .stat-row { display: flex; justify-content: space-between; font-size: 13px; padding: 6px 0; border-bottom: 1px dashed #eee; }
+        .stat-row:last-child { border-bottom: none; }
+        .algo-name { font-weight: 500; }
+        .time-val { font-family: 'Courier New', Courier, monospace; font-weight: bold; }
+        .fastest { color: #00cc66; }/*highlight the fastest one*/
+    </style>
+</head>
+<body>
+    <!--basically handles the css part of the code and makes the box that shows the statistics -->
+    <div class="control-panel">
+        <h2>Routing Benchmark</h2>
+        <p>Click two locations on the map to calculate.</p>
+        
+        <label for="algo-select">Render Path Style on Map:</label>
+        <select id="algo-select">
+            <option value="double_a_star">Double A* (Bidirectional)</option>
+            <option value="a_star">Standard A* (Heuristic)</option>
+            <option value="dijkstra">Dijkstra (No Heuristic)</option>
+        </select>
+
+        <div class="scorecard">
+            <div class="score-title">Performance Metrics</div>
+            <div class="stat-row">
+                <span class="algo-name">Dijkstra:</span>
+                <span id="time-dijkstra" class="time-val">-- ms</span>
+            </div>
+            <div class="stat-row">
+                <span class="algo-name">Standard A*:</span>
+                <span id="time-astar" class="time-val">-- ms</span>
+            </div>
+            <div class="stat-row">
+                <span class="algo-name">Double A*:</span>
+                <span id="time-double" class="time-val">-- ms</span>
+            </div>
+        </div>
+    </div>
+
+    <!--this is the placeholder for the map object -->
+
+    <div id="map"></div>
+    <!--javascript for the map -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        //creates a map and attaches it to the div id= map function in the program
+        const map = L.map('map').setView([12.8877, 77.5996], 15);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        let startMarker = null;
+        let endMarker = null;
+        let currentRouteLine = null;
+        //clears teh map
+        function clearMap() {
+            if (startMarker) map.removeLayer(startMarker);
+            if (endMarker) map.removeLayer(endMarker);
+            if (currentRouteLine) map.removeLayer(currentRouteLine);
+            
+            startMarker = null;
+            endMarker = null;
+            currentRouteLine = null;
+            
+            document.getElementById('time-dijkstra').innerText = "-- ms";
+            document.getElementById('time-dijkstra').classList.remove('fastest');
+            document.getElementById('time-astar').innerText = "-- ms";
+            document.getElementById('time-astar').classList.remove('fastest');
+            document.getElementById('time-double').innerText = "-- ms";
+            document.getElementById('time-double').classList.remove('fastest');
+        }
+        //registers clicks
+        map.on('click', function(e) {
+            if (startMarker === null) {
+                startMarker = L.marker(e.latlng).addTo(map).bindPopup("Start").openPopup();
+                return;
+            }
+            //the code to calc the shortest dist
+            if (endMarker === null) {
+                endMarker = L.marker(e.latlng).addTo(map).bindPopup("Destination").openPopup();
+                
+                let startLat = startMarker.getLatLng().lat;
+                let startLon = startMarker.getLatLng().lng;
+                let endLat = endMarker.getLatLng().lat;
+                let endLon = endMarker.getLatLng().lng;
+                let algo = document.getElementById('algo-select').value;//reads teh currently selected drop down
+
+                fetch(`/get_route?start_lat=${startLat}&start_lon=${startLon}&end_lat=${endLat}&end_lon=${endLon}&algo=${algo}`) //basically this sends a http req to the app files and triggers the get route func
+                .then(response => response.json())//convert the recieved data to json so that we can process it
+                .then(data => {//processes the actual information
+                    if (data.status === "success") {
+                        // Render route path line instantly
+                        currentRouteLine = L.polyline(data.route, {
+                            color: '#0055ff',
+                            weight: 6,
+                            opacity: 0.9
+                        }).addTo(map);
+                        map.fitBounds(currentRouteLine.getBounds(), { padding: [50, 50] });
+
+                        // Update Scorecard Benchmarks
+                        let b = data.benchmarks;
+                        document.getElementById('time-dijkstra').innerText = b.dijkstra + " ms";
+                        document.getElementById('time-astar').innerText = b.a_star + " ms";
+                        document.getElementById('time-double').innerText = b.double_a_star + " ms";
+
+                        // highlight the fastest calculation speed
+                        let minTime = Math.min(b.dijkstra, b.a_star, b.double_a_star);
+                        if (b.dijkstra === minTime) document.getElementById('time-dijkstra').classList.add('fastest');
+                        if (b.a_star === minTime) document.getElementById('time-astar').classList.add('fastest');
+                        if (b.double_a_star === minTime) document.getElementById('time-double').classList.add('fastest');
+
+                    } else {
+                        alert("Error: " + data.message);
+                        clearMap();
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    clearMap();//this is to catch any errors
+                });
+                return;
+            }
+            clearMap();//this is for the third click
+        });
+
+        // this gets triggered when we choose something from drop down.
+        document.getElementById('algo-select').addEventListener('change', () => {
+            if (startMarker && endMarker && currentRouteLine) {
+                let startLat = startMarker.getLatLng().lat;
+                let startLon = startMarker.getLatLng().lng;
+                let endLat = endMarker.getLatLng().lat;
+                let endLon = endMarker.getLatLng().lng;
+                let algo = document.getElementById('algo-select').value;
+                
+                fetch(`/get_route?start_lat=${startLat}&start_lon=${startLon}&end_lat=${endLat}&end_lon=${endLon}&algo=${algo}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === "success") {
+                        map.removeLayer(currentRouteLine);
+                        currentRouteLine = L.polyline(data.route, { color: '#0055ff', weight: 6 }).addTo(map);
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>
