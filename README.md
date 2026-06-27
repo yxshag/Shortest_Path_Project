@@ -17,3 +17,20 @@ The core engine is built to process real-world spatial networks (originally test
 - **Language:** Python 3
 - **Key Modules:** `heapq` (Min-Heap), `os`, `osmnx`(open street maps), `flask`
 - **Concepts:** Dijkstra's Algorithm, A* Algorithm, Double A* Algorithm, Graph Theory, Network Routing
+
+---
+
+## 🛠️ Setup & How to Run
+
+To run this project locally, follow these exact steps:
+
+### 1. Download the Required Files
+Make sure you download **both** of the following files and place them inside the **same folder** on your computer:
+* `app.py` (The main Python backend application)
+* `index.html` (The frontend user interface)
+
+### 2. Run the Application
+Open your terminal or command prompt, navigate to the folder containing these files, and run the Python script:
+
+```bash
+python app.py
